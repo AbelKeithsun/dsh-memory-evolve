@@ -680,6 +680,20 @@
 }
 
 /* ---- memory tab (conversation.view) ---- */
+
+/* DSH 0.1.2-rc 起，会话列两侧渲染「拉宽」用的宽度手柄（absolute 全高、
+ * z-index 8、拦截点击的 col-resize 竖条，元素带 [data-width-handle]）。
+ * 「记忆」Tab 是占满整列宽的管理面板（不同于聊天内容，不随
+ * --dsh-chat-content-width 收窄）；把对话框拉宽后手柄条贴近面板边缘，
+ * 正好压住子导航行（指南 / 全局规则 AGENTS.md …），导致遮挡、无法点击
+ * （issue #40）。DSH 对全宽 overlay 视图（trajectory 等）同样用 :has()
+ * 隐藏手柄；这里对插件的全宽记忆视图做同等处理：记忆面板挂载期间隐藏
+ * 手柄，切回会话等其它视图时自动恢复（拉宽宽度偏好本身不受影响）。
+ */
+[data-phase]:has(.mt-panel) [data-width-handle] {
+  display: none;
+}
+
 .mt-panel {
   display: flex;
   flex-direction: column;
