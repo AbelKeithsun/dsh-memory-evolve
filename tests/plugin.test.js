@@ -578,8 +578,8 @@ test('renderSnapshot injects key facts but keeps project and daily on-demand', a
   assert.ok(snapshot.includes('target=project'))
   // per-turn duties: one minimal checklist, text-first tool-after pattern
   assert.ok(snapshot.includes('每轮收尾'))
-  assert.ok(snapshot.includes('先输出完整回复文本，再在文本之后附带工具调用'))
-  assert.ok(snapshot.includes('严禁先调工具'))
+  assert.ok(snapshot.includes('每轮收尾分两步'))
+  assert.ok(snapshot.includes('下一条消息输出完整回复'))
   assert.ok(snapshot.includes('一次调用'))
   assert.ok(snapshot.includes('entries 数组'))
   assert.ok(snapshot.includes('内容不要自带时间/日期前缀'))
