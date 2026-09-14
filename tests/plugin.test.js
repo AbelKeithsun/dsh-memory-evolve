@@ -620,6 +620,26 @@ test('issue #43: the dtodo turn-end hint reaches user sessions only, never subag
   clean(dir)
 })
 
+test('issue #53: 快照段净化记忆正文的 {{...}}，防宿主段渲染器 throw', () => {
+  const dir = tempDir()
+  const config = resolveConfig({ memoryDir: dir })
+  const store = new MemoryStore(config.memoryDir, config)
+  const agent = { id: 'a', session: { header: { cwd: '/proj/x' } } }
+  // 真实案例（issue #53）：模型把配置片段当事实记进 KEY 轨，宿主未注册 session
+  store.add('key', 'settings.yaml: headers: {x-opencode-session: {{session}}}', agent)
+  // 记忆里的 {{date}} 是"要记录的字面事实"，不是"待展开的模板"——不得被展开成日期
+  store.add('memory', '提示词正文里可用 {{date}} 占位', agent)
+  // 会话标题同样来自用户输入，可能带 {{...}}（第五参数 = ctx.sessionTitle）
+  const snap = renderSnapshot(config, store, agent, undefined, '排查 {{session}} 报错')
+  // 宿主 interpolate 的正则 /^\{\{([^{}]*)\}\}/：快照里不得再有可解析组，
+  // 否则 memory:snapshot 整段渲染失败 → preStep 失败 → 该会话每轮起不来
+  assert.equal((snap.match(/\{\{[^{}]*\}\}/g) ?? []).length, 0, '快照不得携带宿主可解析的 {{...}}')
+  // 只降级一层大括号：语义保留（不展开、不删除）
+  assert.ok(snap.includes('{x-opencode-session: {session}}'), '未注册变量降级为单花括号')
+  assert.ok(snap.includes('{date}'), '{{date}} 在记忆正文中保持字面（不展开为日期）')
+  clean(dir)
+})
+
 test('renderSnapshot per-turn write switches compose the hint per track', () => {
   const dir = tempDir()
   const config = resolveConfig({ memoryDir: dir })
