@@ -6,6 +6,24 @@ All version changes for this repository, in reverse chronological order.
 
 ---
 
+## 2026-09-14
+
+### Fixed
+
+- **A literal `{{...}}` inside memory content could poison a session (issue #53, blocking)**: the host's system-prompt section renderer treats `{{name}}` in section text as a template variable and **throws on any unregistered name** (only `provider`/`model`/`cwd` are registered). The `memory:snapshot` section spliced session title/alias, `memory`/`user` tracks and the project KEY track in verbatim — sanitization existed only for the prompt-injection track. So one literal `{{xxx}}` written into memory (real case: recording the fact `x-opencode-session: {{session}}`) became a landmine for every session injecting that track: **the session failed at every step of every turn and could not rescue itself** (tool calls need a turn, and turns could not start) — the only way out was editing the memory file by hand. The whole snapshot is now sanitized before leaving the plugin: `sanitizeSnapshotBody` gained an `expand` option — the injection track keeps `expand=true` (users write real templates), while memory content and the whole-snapshot path use `expand=false`, which **downgrades without expanding** (a `{{date}}` in memory is a recorded literal fact; expanding it would falsify content; `{{date}}` → `{date}` keeps the meaning and stops the host from parsing it). `buildMemoryContext` (external COI only, never rendered by the host) is left alone. Because sanitization happens at render time, **already-poisoned sessions recover as soon as the plugin is upgraded** — no user data files are touched.
+- **Enabling advisor raised `TypeError: events is not iterable` every turn (issue #49)**: same root cause as issue #42 / PR #38 — DSH 0.1.2-alpha.4+ removed `Session.events`, and while `lib/review.js` was fixed back then, advisor's `session/event` wiring was missed, passing `undefined` to the observer whose `findLastMessageTurnEnd` then ran `for...of` over it. Now uses the same three-tier fallback `session.ownEvents?.() ?? session.events ?? []`.
+
+### Added
+
+- **Built-in skill memory-consolidate (external PR #50)**: consolidates accumulated memories through seven approved criteria (supersede-keep-newest, similar-entry merging, literal dedup, conflict resolution, project-local archiving, stale-state cleanup, cross-track relocation). Hard boundaries: memory tool only (`replace`/`archive`/`add`; never edit `.md` files directly, never `remove`, so every step is reversible); daily logs and todos never participate; new key entries still go through the user-confirmation queue. Ships a zero-dependency read-only pre-scan script `scripts/scan_memory.mjs` (entry parsing, CJK bigram TF-IDF similarity, supersede hints, conflict-polarity clustering) that only proposes candidates and never decides or writes.
+
+### Changed
+
+- **Turn-end is now two-step: write memory first, then output the complete reply (external PR #52)**: the old rule put the complete reply and the memory tool calls in one message, but in DSH **a message carrying tool calls cannot end the turn**, which forced an extra closing message; `transcriptView` defaults to `compact` (collapsing finished turns, highlighting the final output) and highlights the **last** message — so it highlighted the meaningless closing line instead of the reply. Now: ① one message with only the write tool calls (no prose) → ② the next message outputs the complete reply (no tool calls, ends the turn), making the reply the last message. Note the `snap.turnEndHead` text deliberately avoids the word "dtodo": that line is not gated by `todoEnabled`, whose turn-end guidance lives in the gated `snap.todoHint`.
+- **Built-in skill sync now copies whole directories (external PR #50)**: previously only `SKILL.md` was copied; now the entire skill directory travels (so `scripts/` ships with the skill), with version gating and user-edit protection unchanged (not overwritten while the target's `x-version` is not lower). **Behavior change**: on a version bump the target directory is cleared before copying, so files a user added inside a built-in skill directory are removed.
+
+---
+
 ## 2026-09-09
 
 ### Fixed
