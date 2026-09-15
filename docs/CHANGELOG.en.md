@@ -4,6 +4,17 @@ All version changes for this repository, in reverse chronological order.
 
 > [中文](CHANGELOG.md)
 
+## 2026-09-15
+
+### Fixed
+
+- **Memory content was being progressively corrupted into U+FFFD by the sync path (root cause, blocking)**: `MEMORY.md` and daily logs grew `�` characters (45 accumulated silently over four days in the field; 11 across four daily files on this machine) while the format pre-checks (`isCanonical`, parse→serialize round-trip) happily let them through. The root cause was the **sync read path**: `runGit()` (`lib/sync/repo.js`) collected child output with a bare `String(chunk)` — `String(buffer)` is `buffer.toString('utf8')`, i.e. **every pipe chunk is decoded independently**. Git streams large blobs in 32 KiB blocks, so any multi-byte character straddling a block boundary (a 3-byte CJK character, a 4-byte emoji) was split into two invalid sequences and decoded into one U+FFFD each. Propagation: `readTreeFiles()` (reading remote `theirs` / merge-base `base`) → damaged text enters → `mergeEntries` → written back → committed → the next sync reads the damage back and splits more characters, **accumulating round after round**. Forensics: the commit holding the damage had two parents with zero U+FFFD yet the merge result had two, and the next round went 2 → 3; in the clean revisions of the four damaged files the damaged character starts at byte offsets 32766 / 32767 / 32766 / 81913 — the first three **straddle byte 32768 exactly**. Fix: decode via `setEncoding('utf8')`, where Node's StringDecoder holds the incomplete sequence at a chunk boundary and completes it with the next chunk. The same bug was fixed at three more sites: `lib/sync/index.js` (worker child stdout/stderr — stdout's last line is JSON, so damage breaks parsing), `lib/search-docs.js` (document search `out += chunk`, damage lands in search results), and `lib/coi/scheduler.js` (COI task logs, both the start and the resume paths, where damage lands in the log the user reads). `runGit()` also gained an `opts.spawnFn` injection point (tests only) so a chunk boundary can be reproduced deterministically.
+- **Document-search output cap now counts UTF-8 bytes**: `lib/search-docs.js` guarded `maxBytes` with `out.length + chunk.length`, mixing UTF-16 units with Buffer bytes. Now that `setEncoding` makes `chunk` a string, `.length` would count a CJK character as one third of its byte size, so the cap accumulates `Buffer.byteLength(chunk, 'utf8')` separately.
+
+### Tests
+
+- New `tests/sync-utf8-stream.test.js` (14 cases): injects a fake spawn plus manually `push`ed Readable streams and delivers 2/3/4-byte characters as two pieces at **every internal split point** (six cases each for stdout and stderr), plus a byte-by-byte worst case and a real-child-process smoke test. Every case self-checks the premise ("the same pieces handed to the old chunked decode must be damaged"), so a split point that stops being harmful fails loudly instead of passing green. Verified: reverting the decode fix makes all 14 fail. (The first version of this regression used a real child process with a 60 ms timed split, which external review falsified as **false-green** — a slightly slow parent coalesces both pieces into a single data event; it has been rewritten with injection.)
+
 ---
 
 ## 2026-09-14
